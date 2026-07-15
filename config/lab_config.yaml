@@ -1,0 +1,15 @@
+
+
+defaults:
+  interface: "eth0"
+  target_ip: "192.168.1.100"
+  gateway_ip: "192.168.1.1"
+  subnet: "192.168.1.0/24"
+
+safe_mode:
+  default: true
+  description: "When ON, no packets are actually sent — dry-run only"
+
+capture:
+  packet_count: 50
+  timeout_seconds: 30
