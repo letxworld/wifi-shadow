@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>wifi-shadow - Network Attack !!!</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+    
+        <header>
+            <h1>📡 wifi-shadow</h1>
+            <p class="subtitle">Understand what an attacker can see &amp; do on your network</p>
+            <p class="warning">⚠️ For educational use on networks you own or have permission to test</p>
+        </header>
+
+     
+        <section class="settings-panel">
+            <h3>🎯 Target Settings</h3>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label for="target-ip">Victim IP:</label>
+                    <input type="text" id="target-ip" placeholder="192.168.1.100" value="192.168.1.100">
+                </div>
+                <div class="setting-item">
+                    <label for="interface">Network Interface:</label>
+                    <input type="text" id="interface" placeholder="eth0" value="eth0">
+                </div>
+                <div class="setting-item">
+                    <label for="gateway-ip">Gateway IP:</label>
+                    <input type="text" id="gateway-ip" placeholder="192.168.1.1" value="192.168.1.1">
+                </div>
+                <div class="setting-item safe-mode">
+                    <label for="safe-mode">Safe Mode:</label>
+                    <input type="checkbox" id="safe-mode" checked>
+                    <span class="hint">(ON = dry-run, no packets sent)</span>
+                </div>
+            </div>
+            <button onclick="saveSettings()" class="btn btn-primary">💾 Apply Settings</button>
+            <span id="settings-status" class="status-msg"></span>
+        </section>
+
+        <!-- Controls -->
+        <section class="controls">
+            <button onclick="scanNetwork()" class="btn btn-scan">📋 Discover Devices</button>
+            <button onclick="clearLog()" class="btn btn-clear">🧹 Clear Log</button>
+        </section>
+
+        <!-- Attack Cards -->
+        <section class="card-grid">
+            <div class="card passive">
+                <h3>🔵 Passive Spying</h3>
+                <p>See websites, DNS, unencrypted data</p>
+                <ul class="attack-list">
+                    <li>DNS sniffing</li>
+                    <li>HTTP plaintext capture</li>
+                    <li>Traffic analysis</li>
+                </ul>
+                <button onclick="startAttack('passive')" class="btn btn-attack">▶ Run Demo</button>
+            </div>
+
+            <div class="card active">
+                <h3>🟡 Active Attacks</h3>
+                <p>ARP spoof, cookie steal, port scan</p>
+                <ul class="attack-list">
+                    <li>ARP spoofing (MITM)</li>
+                    <li>Session cookie theft</li>
+                    <li>Port scanning</li>
+                </ul>
+                <button onclick="startAttack('active')" class="btn btn-attack">▶ Run Demo</button>
+            </div>
+
+            <div class="card high">
+                <h3>🔴 High Risk Exploitation</h3>
+                <p>Device takeover, rogue DHCP, SMB relay</p>
+                <ul class="attack-list">
+                    <li>Metasploit exploits</li>
+                    <li>Rogue DHCP server</li>
+                    <li>SMB relay attacks</li>
+                </ul>
+                <button onclick="startAttack('high')" class="btn btn-attack">▶ Run Demo</button>
+            </div>
+        </section>
+
+        <!-- Live Log -->
+        <section class="log-container">
+            <h4>📜 Live Log</h4>
+            <div id="log-output"></div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <p>wifi-shadow v0.1.0 — Built for cybersecurity education</p>
+        </footer>
+    </div>
+
+    <script>
+        const socket = io();
+        const logOutput = document.getElementById('log-output');
+
+        // ---- SocketIO Events ----
+
+        socket.on('log_message', (data) => {
+            const entry = document.createElement('div');
+            entry.className = `log-${data.level}`;
+            entry.textContent = `[${data.timestamp}] ${data.message}`;
+            logOutput.appendChild(entry);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        });
+
+        socket.on('scan_done', (data) => {
+            if (data.status === 'ok') {
+                appendLog('info', `✅ Scan complete. Found ${data.count} devices.`);
+                data.devices.forEach((dev, i) => {
+                    appendLog('device', `  ${i+1}. ${dev.ip} - ${dev.mac} (${dev.hostname || 'unknown'})`);
+                });
+            } else if (data.status === 'no_devices') {
+                appendLog('warn', '⚠️ No devices found. Check your interface and network.');
+            } else {
+                appendLog('error', `❌ Scan failed: ${data.message}`);
+            }
+        });
+
+        socket.on('settings_saved', (data) => {
+            if (data.status === 'ok') {
+                document.getElementById('settings-status').textContent = '✅ Applied';
+                document.getElementById('settings-status').style.color = 'green';
+                setTimeout(() => {
+                    document.getElementById('settings-status').textContent = '';
+                }, 3000);
+            } else {
+                document.getElementById('settings-status').textContent = '❌ Error: ' + data.message;
+                document.getElementById('settings-status').style.color = 'red';
+            }
+        });
+
+        socket.on('attack_result', (data) => {
+            if (data.status === 'dry_run') {
+                appendLog('warn', `🔒 [SAFE MODE] ${data.message}`);
+            } else {
+                appendLog('attack', `⚡ ${data.message}`);
+            }
+        });
+
+        // ---- Helper Functions ----
+
+        function appendLog(level, msg) {
+            // Local fallback if socket is slow
+            const entry = document.createElement('div');
+            entry.className = `log-${level}`;
+            const ts = new Date().toLocaleTimeString();
+            entry.textContent = `[${ts}] ${msg}`;
+            logOutput.appendChild(entry);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+
+        function saveSettings() {
+            const settings = {
+                target_ip: document.getElementById('target-ip').value.trim(),
+                interface: document.getElementById('interface').value.trim(),
+                gateway_ip: document.getElementById('gateway-ip').value.trim(),
+                safe_mode: document.getElementById('safe-mode').checked
+            };
+            socket.emit('save_settings', settings);
+            document.getElementById('settings-status').textContent = '⏳ Saving...';
+            document.getElementById('settings-status').style.color = 'orange';
+        }
+
+        function scanNetwork() {
+            appendLog('info', '🔍 Scanning network... (this may take a few seconds)');
+            socket.emit('scan_network');
+        }
+
+        function startAttack(type) {
+            const target = document.getElementById('target-ip').value.trim() || '192.168.1.100';
+            const safe = document.getElementById('safe-mode').checked;
+            appendLog('info', `🚀 Triggering ${type} attack on ${target} (safe mode: ${safe ? 'ON' : 'OFF'})`);
+            socket.emit('start_attack', {
+                type: type,
+                target_ip: target,
+                safe_mode: safe
+            });
+        }
+
+        function clearLog() {
+            logOutput.innerHTML = '';
+            appendLog('info', '🧹 Log cleared');
+        }
+
+        // ---- Auto-Connect Message ----
+        window.onload = () => {
+            appendLog('info', '🟢 Connected to wifi-shadow server');
+            // Auto-scan after 2 seconds
+            setTimeout(() => {
+                scanNetwork();
+            }, 2000);
+        };
+    </script>
+</body>
+</html>
