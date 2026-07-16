@@ -1,9 +1,10 @@
 from flask import Flask
 from flask_socketio import SocketIO
 from core.logger import init_socketio, info
+import os
 
 # ===== Initialize Flask App =====
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = 'wifi-shadow-lab-key'
 
 # ===== Initialize SocketIO =====
@@ -16,8 +17,9 @@ init_socketio(socketio)
 from dashboard.routes import register_routes
 register_routes(app)
 
-# ===== Import Socket Handlers =====
-from dashboard import socket_handler
+# ===== Register Socket Handlers =====
+from dashboard.socket_handler import register_socket_handlers
+register_socket_handlers(socketio)
 
 # ===== Startup Message =====
 info("🚀 wifi-shadow server starting...")

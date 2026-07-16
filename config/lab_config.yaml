@@ -1,7 +1,8 @@
-
+# wifi-shadow lab configuration
+# These are defaults only — dashboard settings override at runtime
 
 defaults:
-  interface: "eth0"
+  interface: "wlp0s20f3"         # Your WiFi interface
   target_ip: "192.168.1.100"
   gateway_ip: "192.168.1.1"
   subnet: "192.168.1.0/24"

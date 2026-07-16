@@ -1,6 +1,5 @@
 import json
 from datetime import datetime
-from flask_socketio import emit
 
 # Global reference to socketio (set by app.py during initialization)
 _socketio = None
@@ -23,13 +22,14 @@ def log(level, message, broadcast=True):
     print(formatted)
     
     # Emit to dashboard if SocketIO is available
-    if _socketio and broadcast:
+    if _socketio:
         try:
+            # Emit to all connected clients
             _socketio.emit('log_message', {
                 'level': level,
                 'message': message,
                 'timestamp': timestamp
-            }, broadcast=True)
+            })
         except Exception as e:
             print(f"[ERROR] Failed to emit log: {e}")
 

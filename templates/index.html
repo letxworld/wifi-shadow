@@ -3,34 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>wifi-shadow - Network Attack !!!</title>
-    <link rel="stylesheet" href="../dashboard/static/css/style.css">
+    <title>wifi-shadow - Network Attack Awareness</title>
+    <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
 </head>
 <body>
     <div class="container">
-    
         <header>
             <h1>📡 wifi-shadow</h1>
             <p class="subtitle">Understand what an attacker can see &amp; do on your network</p>
             <p class="warning">⚠️ For educational use on networks you own or have permission to test</p>
         </header>
 
-     
         <section class="settings-panel">
             <h3>🎯 Target Settings</h3>
             <div class="settings-grid">
                 <div class="setting-item">
                     <label for="target-ip">Victim IP:</label>
-                    <input type="text" id="target-ip" placeholder="192.168.1.100" value="192.168.1.100">
+                    <input type="text" id="target-ip" placeholder="192.168.1.100">
                 </div>
                 <div class="setting-item">
                     <label for="interface">Network Interface:</label>
-                    <input type="text" id="interface" placeholder="eth0" value="eth0">
+                    <input type="text" id="interface" placeholder="eth0">
                 </div>
                 <div class="setting-item">
                     <label for="gateway-ip">Gateway IP:</label>
-                    <input type="text" id="gateway-ip" placeholder="192.168.1.1" value="192.168.1.1">
+                    <input type="text" id="gateway-ip" placeholder="192.168.1.1">
                 </div>
                 <div class="setting-item safe-mode">
                     <label for="safe-mode">Safe Mode:</label>
@@ -42,13 +40,12 @@
             <span id="settings-status" class="status-msg"></span>
         </section>
 
-        <!-- Controls -->
         <section class="controls">
             <button onclick="scanNetwork()" class="btn btn-scan">📋 Discover Devices</button>
             <button onclick="clearLog()" class="btn btn-clear">🧹 Clear Log</button>
+            <button onclick="testLog()" class="btn btn-scan">🧪 Test Log</button>
         </section>
 
-        <!-- Attack Cards -->
         <section class="card-grid">
             <div class="card passive">
                 <h3>🔵 Passive Spying</h3>
@@ -84,25 +81,33 @@
             </div>
         </section>
 
-        <!-- Live Log -->
         <section class="log-container">
             <h4>📜 Live Log</h4>
             <div id="log-output"></div>
         </section>
 
-        <!-- Footer -->
         <footer>
             <p>wifi-shadow v0.1.0 — Built for cybersecurity education</p>
         </footer>
     </div>
 
     <script>
+        // Create socket and make it globally accessible
         const socket = io();
+        window.socket = socket;  // Make it global for console debugging
+        
         const logOutput = document.getElementById('log-output');
+        console.log('✅ Socket created, window.socket available');
 
         // ---- SocketIO Events ----
 
+        socket.on('connect', () => {
+            console.log('🟢 Socket connected to server');
+            appendLog('info', '🟢 Connected to server');
+        });
+
         socket.on('log_message', (data) => {
+            console.log('📨 Received log:', data);
             const entry = document.createElement('div');
             entry.className = `log-${data.level}`;
             entry.textContent = `[${data.timestamp}] ${data.message}`;
@@ -110,12 +115,26 @@
             logOutput.scrollTop = logOutput.scrollHeight;
         });
 
+        socket.on('settings_loaded', (data) => {
+            console.log('⚙️ Settings loaded:', data);
+            document.getElementById('target-ip').value = data.target_ip || '192.168.1.100';
+            document.getElementById('interface').value = data.interface || 'eth0';
+            document.getElementById('gateway-ip').value = data.gateway_ip || '192.168.1.1';
+            document.getElementById('safe-mode').checked = data.safe_mode !== undefined ? data.safe_mode : true;
+            appendLog('info', `⚙️ Settings loaded: ${data.interface} → ${data.target_ip}`);
+        });
+
         socket.on('scan_done', (data) => {
+            console.log('📋 Scan done:', data);
             if (data.status === 'ok') {
                 appendLog('info', `✅ Scan complete. Found ${data.count} devices.`);
                 data.devices.forEach((dev, i) => {
                     appendLog('device', `  ${i+1}. ${dev.ip} - ${dev.mac} (${dev.hostname || 'unknown'})`);
                 });
+                if (data.devices.length > 0) {
+                    document.getElementById('target-ip').value = data.devices[0].ip;
+                    appendLog('info', `🎯 Target IP auto-set to: ${data.devices[0].ip}`);
+                }
             } else if (data.status === 'no_devices') {
                 appendLog('warn', '⚠️ No devices found. Check your interface and network.');
             } else {
@@ -124,30 +143,32 @@
         });
 
         socket.on('settings_saved', (data) => {
+            console.log('💾 Settings saved:', data);
+            const statusEl = document.getElementById('settings-status');
             if (data.status === 'ok') {
-                document.getElementById('settings-status').textContent = '✅ Applied';
-                document.getElementById('settings-status').style.color = 'green';
-                setTimeout(() => {
-                    document.getElementById('settings-status').textContent = '';
-                }, 3000);
+                statusEl.textContent = '✅ Applied';
+                statusEl.style.color = '#34d399';
+                setTimeout(() => { statusEl.textContent = ''; }, 3000);
             } else {
-                document.getElementById('settings-status').textContent = '❌ Error: ' + data.message;
-                document.getElementById('settings-status').style.color = 'red';
+                statusEl.textContent = '❌ Error: ' + data.message;
+                statusEl.style.color = '#f87171';
             }
         });
 
         socket.on('attack_result', (data) => {
+            console.log('⚡ Attack result:', data);
             if (data.status === 'dry_run') {
                 appendLog('warn', `🔒 [SAFE MODE] ${data.message}`);
-            } else {
+            } else if (data.status === 'started') {
                 appendLog('attack', `⚡ ${data.message}`);
+            } else {
+                appendLog('error', `❌ Attack failed: ${data.message}`);
             }
         });
 
         // ---- Helper Functions ----
 
         function appendLog(level, msg) {
-            // Local fallback if socket is slow
             const entry = document.createElement('div');
             entry.className = `log-${level}`;
             const ts = new Date().toLocaleTimeString();
@@ -163,9 +184,21 @@
                 gateway_ip: document.getElementById('gateway-ip').value.trim(),
                 safe_mode: document.getElementById('safe-mode').checked
             };
+            
+            if (!settings.target_ip) {
+                document.getElementById('settings-status').textContent = '⚠️ Please enter a target IP';
+                document.getElementById('settings-status').style.color = '#fbbf24';
+                return;
+            }
+            if (!settings.interface) {
+                document.getElementById('settings-status').textContent = '⚠️ Please enter a network interface';
+                document.getElementById('settings-status').style.color = '#fbbf24';
+                return;
+            }
+            
             socket.emit('save_settings', settings);
             document.getElementById('settings-status').textContent = '⏳ Saving...';
-            document.getElementById('settings-status').style.color = 'orange';
+            document.getElementById('settings-status').style.color = '#fbbf24';
         }
 
         function scanNetwork() {
@@ -176,7 +209,13 @@
         function startAttack(type) {
             const target = document.getElementById('target-ip').value.trim() || '192.168.1.100';
             const safe = document.getElementById('safe-mode').checked;
-            appendLog('info', `🚀 Triggering ${type} attack on ${target} (safe mode: ${safe ? 'ON' : 'OFF'})`);
+            const labels = {
+                passive: '🔵 Passive Spying',
+                active: '🟡 Active Attacks',
+                high: '🔴 High Risk Exploitation'
+            };
+            appendLog('info', `🚀 Triggering ${labels[type] || type} on ${target}`);
+            appendLog('info', `   Safe mode: ${safe ? 'ON (dry-run)' : 'OFF (live)'}`);
             socket.emit('start_attack', {
                 type: type,
                 target_ip: target,
@@ -189,13 +228,24 @@
             appendLog('info', '🧹 Log cleared');
         }
 
-        // ---- Auto-Connect Message ----
+        function testLog() {
+            console.log('🧪 Sending test log...');
+            socket.emit('log_message', {
+                level: 'info',
+                message: '🧪 Test log from dashboard',
+                timestamp: new Date().toLocaleTimeString()
+            });
+            appendLog('info', '🧪 Test log sent');
+        }
+
+        // ---- On Page Load ----
         window.onload = () => {
+            console.log('📄 Page loaded, requesting settings...');
             appendLog('info', '🟢 Connected to wifi-shadow server');
-            // Auto-scan after 2 seconds
+            socket.emit('get_settings');
             setTimeout(() => {
                 scanNetwork();
-            }, 2000);
+            }, 3000);
         };
     </script>
 </body>
