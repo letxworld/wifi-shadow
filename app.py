@@ -9,10 +9,14 @@ app.config['SECRET_KEY'] = 'wifi-shadow-lab-key'
 # ===== Initialize SocketIO =====
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# ===== Initialize Logger with SocketIO =====
 init_socketio(socketio)
 
+# ===== Register Routes =====
+from dashboard.routes import register_routes
+register_routes(app)
 
-from dashboard import routes
+# ===== Import Socket Handlers =====
 from dashboard import socket_handler
 
 # ===== Startup Message =====
