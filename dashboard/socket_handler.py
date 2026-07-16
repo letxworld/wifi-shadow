@@ -2,6 +2,7 @@ from core.logger import info, warn, error, log
 from core.network_scanner import scan_network
 import yaml
 import os
+import threading
 
 # Load config defaults
 config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'lab_config.yaml')
@@ -24,7 +25,6 @@ def register_socket_handlers(socketio):
     def handle_connect():
         """Client connected to dashboard"""
         info('Dashboard client connected')
-        # Emit directly to the connected client
         socketio.emit('log_message', {
             'level': 'info',
             'message': '✅ Connected to wifi-shadow server',
@@ -41,7 +41,6 @@ def register_socket_handlers(socketio):
         """Send current settings to the client"""
         info('Sending settings to client')
         socketio.emit('settings_loaded', current_settings)
-        # Also log to dashboard
         socketio.emit('log_message', {
             'level': 'info',
             'message': f'⚙️ Settings loaded: interface={current_settings["interface"]}, target={current_settings["target_ip"]}',
@@ -161,16 +160,165 @@ def register_socket_handlers(socketio):
             })
             return
         
-        # Actual attack execution will go here
-        info(f"🚀 Starting {attack_type} attack on {target_ip} (attack logic coming soon)")
-        socketio.emit('attack_result', {
-            'status': 'started',
-            'attack_type': attack_type,
-            'target': target_ip,
-            'message': f'Started {attack_type} attack on {target_ip}'
-        })
-        socketio.emit('log_message', {
-            'level': 'attack',
-            'message': f'⚡ {attack_type} attack started on {target_ip}',
-            'timestamp': '--:--:--'
-        })
+        # ---- PASSIVE ATTACK ----
+        if attack_type == 'passive':
+            try:
+                from core.passive_sniffer import start_passive_sniff
+                socketio.emit('log_message', {
+                    'level': 'info',
+                    'message': '🔵 Starting passive sniffing... (capturing 50 packets)',
+                    'timestamp': '--:--:--'
+                })
+                
+                def run_sniff():
+                    result = start_passive_sniff(
+                        interface=current_settings.get('interface'),
+                        packet_count=50,
+                        timeout=30
+                    )
+                    if result:
+                        socketio.emit('log_message', {
+                            'level': 'info',
+                            'message': f'✅ Passive sniffing complete. Captured {result.get("packet_count", 0)} packets.',
+                            'timestamp': '--:--:--'
+                        })
+                        if result.get('plaintext_passwords'):
+                            for pwd in result['plaintext_passwords']:
+                                socketio.emit('log_message', {
+                                    'level': 'attack',
+                                    'message': f'🔓 Plaintext password: {pwd["password"]} on {pwd["host"]}',
+                                    'timestamp': '--:--:--'
+                                })
+                
+                thread = threading.Thread(target=run_sniff)
+                thread.start()
+                
+                socketio.emit('attack_result', {
+                    'status': 'started',
+                    'attack_type': 'passive',
+                    'target': target_ip,
+                    'message': f'Started passive sniffing on {current_settings.get("interface")}'
+                })
+                
+            except ImportError as e:
+                error(f"Failed to import passive_sniffer: {e}")
+                socketio.emit('log_message', {
+                    'level': 'error',
+                    'message': f'❌ Passive sniffer not ready: {e}',
+                    'timestamp': '--:--:--'
+                })
+            except Exception as e:
+                error(f"Passive attack failed: {e}")
+                socketio.emit('log_message', {
+                    'level': 'error',
+                    'message': f'❌ Passive attack failed: {e}',
+                    'timestamp': '--:--:--'
+                })
+        
+        # ---- ACTIVE ATTACK ----
+        elif attack_type == 'active':
+            try:
+                from core.active_scanner import port_scan, arp_spoof
+                
+                socketio.emit('log_message', {
+                    'level': 'info',
+                    'message': f'🟡 Starting active attacks on {target_ip}...',
+                    'timestamp': '--:--:--'
+                })
+                
+                # Step 1: Port scan
+                socketio.emit('log_message', {
+                    'level': 'info',
+                    'message': '🔍 Running port scan...',
+                    'timestamp': '--:--:--'
+                })
+                
+                open_ports = port_scan(target_ip)
+                
+                if open_ports:
+                    socketio.emit('log_message', {
+                        'level': 'attack',
+                        'message': f'🟡 Found {len(open_ports)} open ports on {target_ip}',
+                        'timestamp': '--:--:--'
+                    })
+                    for port, service in open_ports.items():
+                        socketio.emit('log_message', {
+                            'level': 'attack',
+                            'message': f'   Port {port}: {service} (OPEN)',
+                            'timestamp': '--:--:--'
+                        })
+                else:
+                    socketio.emit('log_message', {
+                        'level': 'info',
+                        'message': f'ℹ️ No open ports found on {target_ip}',
+                        'timestamp': '--:--:--'
+                    })
+                
+                # Step 2: ARP Spoofing (if gateway is set)
+                gateway = current_settings.get('gateway_ip')
+                if gateway:
+                    socketio.emit('log_message', {
+                        'level': 'info',
+                        'message': f'🔄 Starting ARP spoofing against {target_ip} via {gateway}...',
+                        'timestamp': '--:--:--'
+                    })
+                    
+                    def run_arp_spoof():
+                        result = arp_spoof(target_ip, gateway, current_settings.get('interface'))
+                        if result:
+                            socketio.emit('log_message', {
+                                'level': 'attack',
+                                'message': f'✅ ARP spoofing complete. We are now MITM!',
+                                'timestamp': '--:--:--'
+                            })
+                        else:
+                            socketio.emit('log_message', {
+                                'level': 'error',
+                                'message': f'❌ ARP spoofing failed',
+                                'timestamp': '--:--:--'
+                            })
+                    
+                    thread = threading.Thread(target=run_arp_spoof)
+                    thread.start()
+                else:
+                    socketio.emit('log_message', {
+                        'level': 'warn',
+                        'message': '⚠️ No gateway IP set. Skipping ARP spoofing.',
+                        'timestamp': '--:--:--'
+                    })
+                
+                socketio.emit('attack_result', {
+                    'status': 'started',
+                    'attack_type': 'active',
+                    'target': target_ip,
+                    'message': f'Active attacks started on {target_ip}'
+                })
+                
+            except ImportError as e:
+                error(f"Failed to import active_scanner: {e}")
+                socketio.emit('log_message', {
+                    'level': 'error',
+                    'message': f'❌ Active scanner not ready: {e}',
+                    'timestamp': '--:--:--'
+                })
+            except Exception as e:
+                error(f"Active attack failed: {e}")
+                socketio.emit('log_message', {
+                    'level': 'error',
+                    'message': f'❌ Active attack failed: {e}',
+                    'timestamp': '--:--:--'
+                })
+        
+        # ---- HIGH RISK ----
+        elif attack_type == 'high':
+            socketio.emit('log_message', {
+                'level': 'warn',
+                'message': '🔴 High risk exploitation module coming soon!',
+                'timestamp': '--:--:--'
+            })
+            socketio.emit('attack_result', {
+                'status': 'started',
+                'attack_type': 'high',
+                'target': target_ip,
+                'message': f'High risk exploitation on {target_ip} (coming soon)'
+            })
