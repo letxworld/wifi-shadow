@@ -204,8 +204,18 @@ def run_high_risk_attack(target_ip, gateway_ip, interface):
     # Summary
     attack("💀 HIGH RISK ATTACK SEQUENCE COMPLETE")
     info(f"   Vulnerability check: {'VULNERABLE' if vuln_result.get('vulnerable') else 'Not vulnerable'}")
-    info(f"   Exploit attempt: {'SUCCESS' if results['exploit_attempt'] and results['exploit_attempt'].get('success') else 'Failed'}")
+    
+    # Check if exploit_attempt exists before accessing
+    if results['exploit_attempt'] and results['exploit_attempt'].get('success'):
+        info(f"   Exploit attempt: SUCCESS")
+    else:
+        info(f"   Exploit attempt: Failed or not attempted")
+    
     info(f"   Rogue DHCP: {'Started' if results['rogue_dhcp'] else 'Failed'}")
-    info(f"   SMB Relay: {'SUCCESS' if smb_result.get('success') else 'Failed'}")
+    
+    if results['smb_relay'] and results['smb_relay'].get('success'):
+        info(f"   SMB Relay: SUCCESS")
+    else:
+        info(f"   SMB Relay: Failed")
     
     return results

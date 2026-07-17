@@ -310,6 +310,7 @@ def register_socket_handlers(socketio):
                 })
         
         # ---- HIGH RISK ----
+               
         elif attack_type == 'high':
             try:
                 from core.high_risk import run_high_risk_attack
@@ -333,22 +334,25 @@ def register_socket_handlers(socketio):
                     try:
                         results = run_high_risk_attack(target_ip, gateway, interface)
                         
-                        # Emit results
-                        if results.get('vulnerability_check', {}).get('vulnerable'):
+                        # Emit results with safe checks
+                        vuln_check = results.get('vulnerability_check', {})
+                        if vuln_check and vuln_check.get('vulnerable'):
                             socketio.emit('log_message', {
                                 'level': 'attack',
                                 'message': f'🔴 TARGET IS VULNERABLE! {target_ip} has unpatched vulnerabilities!',
                                 'timestamp': '--:--:--'
                             })
                         
-                        if results.get('exploit_attempt', {}).get('success'):
+                        exploit_attempt = results.get('exploit_attempt')
+                        if exploit_attempt and exploit_attempt.get('success'):
                             socketio.emit('log_message', {
                                 'level': 'attack',
                                 'message': f'💀 SYSTEM COMPROMISED! Remote shell acquired on {target_ip}',
                                 'timestamp': '--:--:--'
                             })
                         
-                        if results.get('smb_relay', {}).get('success'):
+                        smb_relay = results.get('smb_relay')
+                        if smb_relay and smb_relay.get('success'):
                             socketio.emit('log_message', {
                                 'level': 'attack',
                                 'message': f'💀 SMB RELAY SUCCESS! Captured credentials from {target_ip}',
