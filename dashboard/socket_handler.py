@@ -311,14 +311,85 @@ def register_socket_handlers(socketio):
         
         # ---- HIGH RISK ----
         elif attack_type == 'high':
-            socketio.emit('log_message', {
-                'level': 'warn',
-                'message': '🔴 High risk exploitation module coming soon!',
-                'timestamp': '--:--:--'
-            })
-            socketio.emit('attack_result', {
-                'status': 'started',
-                'attack_type': 'high',
-                'target': target_ip,
-                'message': f'High risk exploitation on {target_ip} (coming soon)'
-            })
+            try:
+                from core.high_risk import run_high_risk_attack
+                
+                socketio.emit('log_message', {
+                    'level': 'attack',
+                    'message': f'🔴 STARTING HIGH RISK EXPLOITATION on {target_ip}',
+                    'timestamp': '--:--:--'
+                })
+                socketio.emit('log_message', {
+                    'level': 'warn',
+                    'message': '⚠️ THIS IS A SIMULATION - No real exploits are executed',
+                    'timestamp': '--:--:--'
+                })
+                
+                gateway = current_settings.get('gateway_ip', '192.168.1.1')
+                interface = current_settings.get('interface')
+                
+                # Run in background thread
+                def run_high_risk():
+                    try:
+                        results = run_high_risk_attack(target_ip, gateway, interface)
+                        
+                        # Emit results
+                        if results.get('vulnerability_check', {}).get('vulnerable'):
+                            socketio.emit('log_message', {
+                                'level': 'attack',
+                                'message': f'🔴 TARGET IS VULNERABLE! {target_ip} has unpatched vulnerabilities!',
+                                'timestamp': '--:--:--'
+                            })
+                        
+                        if results.get('exploit_attempt', {}).get('success'):
+                            socketio.emit('log_message', {
+                                'level': 'attack',
+                                'message': f'💀 SYSTEM COMPROMISED! Remote shell acquired on {target_ip}',
+                                'timestamp': '--:--:--'
+                            })
+                        
+                        if results.get('smb_relay', {}).get('success'):
+                            socketio.emit('log_message', {
+                                'level': 'attack',
+                                'message': f'💀 SMB RELAY SUCCESS! Captured credentials from {target_ip}',
+                                'timestamp': '--:--:--'
+                            })
+                        
+                        socketio.emit('log_message', {
+                            'level': 'info',
+                            'message': '✅ High risk attack sequence complete',
+                            'timestamp': '--:--:--'
+                        })
+                        
+                    except Exception as e:
+                        error(f"High risk attack failed: {e}")
+                        socketio.emit('log_message', {
+                            'level': 'error',
+                            'message': f'❌ High risk attack failed: {e}',
+                            'timestamp': '--:--:--'
+                        })
+                
+                thread = threading.Thread(target=run_high_risk)
+                thread.start()
+                
+                socketio.emit('attack_result', {
+                    'status': 'started',
+                    'attack_type': 'high',
+                    'target': target_ip,
+                    'message': f'High risk exploitation started on {target_ip}'
+                })
+                
+            except ImportError as e:
+                error(f"Failed to import high_risk: {e}")
+                socketio.emit('log_message', {
+                    'level': 'error',
+                    'message': f'❌ High risk module not ready: {e}',
+                    'timestamp': '--:--:--'
+                })
+            except Exception as e:
+                error(f"High risk attack failed: {e}")
+                socketio.emit('log_message', {
+                    'level': 'error',
+                    'message': f'❌ High risk attack failed: {e}',
+                    'timestamp': '--:--:--'
+                })
